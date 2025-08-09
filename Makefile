@@ -1,43 +1,63 @@
-# Makefile for C++ HTTP server
+CXX := g++
+CXXFLAGS := -std=c++20 -Wall -g
+INCLUDES := -I./common -I./database -I./http -I./net
 
-# Compiler
-CXX = g++
+# webserver 源码
+SRC_DIRS := common database http net
+SRCS := $(wildcard $(addsuffix /*.cpp, $(SRC_DIRS))) main.cpp server.cpp
+OBJS := $(SRCS:.cpp=.o)
 
-# Compiler flags
-# -std=c++17: 使用 C++17 标准
-# -Wall: 开启所有警告
-# -Wextra: 开启额外警告
-# -g: 包含调试信息
-# -O2: 优化级别2，适合发布版本
-CXXFLAGS = -std=c++17 -Wall -Wextra -g
+# 测试源码和目标
+TEST_DIR := test
+TEST_CONFIG_SRC := $(TEST_DIR)/test_config.cpp common/config.cpp common/util.cpp
+TEST_LOG_SRC := $(TEST_DIR)/test_log.cpp common/log.cpp
+TEST_UTIL_SRC := $(TEST_DIR)/test_util.cpp common/util.cpp
+TEST_CONFIG_BIN := $(TEST_DIR)/test_config
+TEST_LOG_BIN := $(TEST_DIR)/test_log
+TEST_UTIL_BIN := $(TEST_DIR)/test_util
 
-# Linker flags
-# -lrt: 链接实时库（可能需要用于某些系统调用，尽管在此代码中可能不是必需的）
-# -lpthread: 如果你打算实现多线程，这是必需的
-# -lstdc++: 明确链接C++标准库（通常g++会自动完成）
-LDFLAGS = -lstdc++
 
-# Source files and object files
-SRCS = server.cpp
-OBJS = $(SRCS:.cpp=.o)
+# 输出目标
+TARGET := webserver
 
-# Executable name
-TARGET = tiny_server
+.PHONY: all clean test run_config run_util
 
-# The default target
-all: $(TARGET)
+# 编译全部
+all: $(TARGET) $(TEST_CONFIG_BIN) $(TEST_UTIL_BIN) $(TEST_LOG_BIN)
 
-# Rule to link the executable
+# 主程序
 $(TARGET): $(OBJS)
-	$(CXX) $(LDFLAGS) $(OBJS) -o $(TARGET)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $^
 
-# Rule to compile C++ source files into object files
-%.o: %.cpp
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+# 测试程序
+$(TEST_CONFIG_BIN): $(TEST_CONFIG_SRC)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $^
 
-# Rule to clean up generated files
+$(TEST_UTIL_BIN): $(TEST_UTIL_SRC)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $^
+
+$(TEST_LOG_BIN): $(TEST_LOG_SRC)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $^
+
+# 运行全部测试
+test: $(TEST_CONFIG_BIN) $(TEST_UTIL_BIN) $(TEST_LOG_BIN)
+	@echo "Running test_config..."
+	./$(TEST_CONFIG_BIN)
+	@echo "Running test_util..."
+	./$(TEST_UTIL_BIN)
+	@echo "Running test_util..."
+	./$(TEST_LOG_BIN)
+
+# 单独运行某个测试
+config: $(TEST_CONFIG_BIN)
+	./$(TEST_CONFIG_BIN)
+
+util: $(TEST_UTIL_BIN)
+	./$(TEST_UTIL_BIN)
+
+log: $(TEST_LOG_BIN)
+	./$(TEST_LOG_BIN)
+
+# 清理
 clean:
-	rm -f $(OBJS) $(TARGET)
-
-# Phony targets to prevent conflicts with file names
-.PHONY: all clean
+	rm -f $(OBJS) $(TARGET) $(TEST_CONFIG_BIN) $(TEST_UTIL_BIN) $(TEST_LOG_BIN)
