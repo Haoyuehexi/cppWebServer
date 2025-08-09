@@ -3,6 +3,8 @@
 #include <fcntl.h>
 #include <iostream>
 #include <netdb.h>
+#include <pthread.h>
+#include <semaphore.h>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -14,6 +16,8 @@
 #define MAXLINE 8192
 #define MAXBUF 8192
 #define LISTENQ 1024
+#define SBUFSIZE 16 /* Shared buffer size */
+#define NTHREADS 4  /* Number of worker threads */
 
 // 自定义的异常类，用于处理特定错误
 class SocketError : public std::runtime_error {
@@ -74,7 +78,7 @@ class Socket {
 
     int getFd() const { return fd_; }
 
-    // 简化的读取一行的方法，这里没有实现内部缓冲，实际中应该实现
+    // 简化的读取一行的方法
     std::string readLine() {
         std::string line;
         char c;
@@ -157,8 +161,10 @@ class ServerSocket {
     ServerSocket(const ServerSocket &) = delete;
     ServerSocket &operator=(const ServerSocket &) = delete;
 
-    // 接受新连接，返回一个Socket对象
-    Socket accept() {
+    int getListenFd() const { return listenfd_; }
+
+    // 接受新连接，返回原始文件描述符
+    int acceptConnection() {
         struct sockaddr_storage clientaddr;
         socklen_t clientlen = sizeof(clientaddr);
         int connfd = ::accept(listenfd_,
@@ -178,7 +184,7 @@ class ServerSocket {
                       << port << ")" << std::endl;
         }
 
-        return Socket(connfd);
+        return connfd;
     }
 
   private:
@@ -213,7 +219,8 @@ void readRequestHeaders(Socket &sock) {
     }
 }
 
-bool parseUri(const std::string& uri, std::string& filename, std::string& cgiargs) {
+bool parseUri(const std::string &uri, std::string &filename,
+              std::string &cgiargs) {
     if (uri.find("cgi-bin") == std::string::npos) {
         // 静态内容
         cgiargs.clear();
@@ -236,27 +243,26 @@ bool parseUri(const std::string& uri, std::string& filename, std::string& cgiarg
     }
 }
 
-std::string get_filetype(const std::string& filename) {
+std::string get_filetype(const std::string &filename) {
     if (filename.find(".html") != std::string::npos) {
         return "text/html";
     } else if (filename.find(".gif") != std::string::npos) {
         return "image/gif";
     } else if (filename.find(".png") != std::string::npos) {
         return "image/png";
-    } else if (filename.find(".jpg") != std::string::npos || filename.find(".jpeg") != std::string::npos) {
+    } else if (filename.find(".jpg") != std::string::npos ||
+               filename.find(".jpeg") != std::string::npos) {
         return "image/jpeg";
     } else {
         return "text/plain";
     }
 }
 
-void serveStatic(Socket& sock, const std::string& filename, size_t filesize) {
+void serveStatic(Socket &sock, const std::string &filename, size_t filesize) {
     int srcfd = -1;
     try {
-        // 假设 get_filetype 已经用 C++ 重写
         std::string filetype = get_filetype(filename);
 
-        // 使用 stringstream 构建 HTTP 响应头
         std::stringstream header_stream;
         header_stream << "HTTP/1.0 200 OK\r\n"
                       << "Server: Tiny Web Server\r\n"
@@ -279,7 +285,7 @@ void serveStatic(Socket& sock, const std::string& filename, size_t filesize) {
         close(srcfd);
         srcfd = -1; // 标记已关闭
 
-    } catch (const PosixError& e) {
+    } catch (const PosixError &e) {
         if (srcfd >= 0) {
             close(srcfd);
         }
@@ -287,7 +293,8 @@ void serveStatic(Socket& sock, const std::string& filename, size_t filesize) {
     }
 }
 
-void serveDynamic(Socket& sock, const std::string& filename, const std::string& cgiargs) {
+void serveDynamic(Socket &sock, const std::string &filename,
+                  const std::string &cgiargs) {
     std::stringstream header_stream;
     header_stream << "HTTP/1.0 200 OK\r\n"
                   << "Server: Tiny Web Server\r\n\r\n";
@@ -302,12 +309,10 @@ void serveDynamic(Socket& sock, const std::string& filename, const std::string& 
     if (pid == 0) { // 子进程
         setenv("QUERY_STRING", cgiargs.c_str(), 1);
         dup2(sock.getFd(), STDOUT_FILENO);
-        
-        // 使用execlp可以在PATH中查找可执行文件
+
         execl(filename.c_str(), filename.c_str(), nullptr);
-        
-        // 如果execl失败，_exit是子进程退出最安全的方式
-        _exit(1); 
+
+        _exit(1);
     } else { // 父进程
         int status;
         if (waitpid(pid, &status, 0) < 0) {
@@ -365,8 +370,64 @@ void handleHttpRequest(Socket sock) {
 
     } catch (const SocketError &e) {
         std::cerr << "Error handling request: " << e.what() << std::endl;
-        // 注意：这里无法再向客户端发送错误，因为连接可能已断开
     }
+}
+
+// -----------------------------------------------------------
+// 共享缓冲区（生产者-消费者模型）
+// -----------------------------------------------------------
+typedef struct {
+    int *buf;
+    int n;
+    int front;
+    int rear;
+    sem_t mutex;
+    sem_t slots;
+    sem_t items;
+} sbuf_t;
+
+sbuf_t sbuf;
+
+void sbuf_init(sbuf_t *sp, int n) {
+    sp->buf = new int[n];
+    sp->n = n;
+    sp->front = sp->rear = 0;
+    sem_init(&sp->mutex, 0, 1);
+    sem_init(&sp->slots, 0, n);
+    sem_init(&sp->items, 0, 0);
+}
+
+void sbuf_deinit(sbuf_t *sp) { delete[] sp->buf; }
+
+void sbuf_insert(sbuf_t *sp, int item) {
+    sem_wait(&sp->slots);
+    sem_wait(&sp->mutex);
+    sp->buf[(++sp->rear) % (sp->n)] = item;
+    sem_post(&sp->mutex);
+    sem_post(&sp->items);
+}
+
+int sbuf_remove(sbuf_t *sp) {
+    int item;
+    sem_wait(&sp->items);
+    sem_wait(&sp->mutex);
+    item = sp->buf[(++sp->front) % (sp->n)];
+    sem_post(&sp->mutex);
+    sem_post(&sp->slots);
+    return item;
+}
+
+// -----------------------------------------------------------
+// 消费者线程函数
+// -----------------------------------------------------------
+void *thread(void *vargp) {
+    pthread_detach(pthread_self());
+    while (true) {
+        int connfd = sbuf_remove(&sbuf);
+        Socket connSock(connfd);
+        handleHttpRequest(std::move(connSock));
+    }
+    return NULL;
 }
 
 // -----------------------------------------------------------
@@ -381,15 +442,22 @@ int main(int argc, char *argv[]) {
     try {
         ServerSocket server(argv[1]);
 
+        sbuf_init(&sbuf, SBUFSIZE);
+
+        pthread_t tid;
+        for (int i = 0; i < NTHREADS; i++) {
+            pthread_create(&tid, NULL, thread, NULL);
+        }
+
         while (true) {
-            Socket connSock = server.accept();
-            // 在实际项目中，这里会启动一个新线程或协程来处理请求
-            handleHttpRequest(std::move(connSock));
+            int connfd = server.acceptConnection();
+            sbuf_insert(&sbuf, connfd);
         }
     } catch (const SocketError &e) {
         std::cerr << "Server fatal error: " << e.what() << std::endl;
         return 1;
     }
 
+    sbuf_deinit(&sbuf);
     return 0;
 }
