@@ -1,19 +1,29 @@
 #ifndef LOG_H
 #define LOG_H
 
+#include <atomic>
+#include <condition_variable>
 #include <fstream>
 #include <mutex>
+#include <queue>
 #include <string>
+#include <thread>
 
 enum LogLevel { DEBUG = 0, INFO = 1, WARN = 2, ERROR = 3 };
 
 class Logger {
   private:
     static std::ofstream logFile;
-    static std::mutex logMutex;
+    static std::mutex queueMutex;
+    static std::condition_variable cv;
+    static std::queue<std::string> logQueue;
+    static std::atomic<bool> running;
+    static std::thread workerThread;
     static LogLevel currentLevel;
 
     static std::string levelToString(LogLevel level);
+    static void worker();
+    static void enqueue(LogLevel level, const std::string &message);
 
   public:
     static void init(const std::string &filename = "server.log",
@@ -26,7 +36,7 @@ class Logger {
     static void close();
 };
 
-// 便捷宏定义
+// 便捷宏
 #define LOG_DEBUG(msg) Logger::debug(msg)
 #define LOG_INFO(msg) Logger::info(msg)
 #define LOG_WARN(msg) Logger::warn(msg)
