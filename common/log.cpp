@@ -27,6 +27,19 @@ std::string Logger::levelToString(LogLevel level) {
     }
 }
 
+LogLevel Logger::stringToLevel(const std::string &level) {
+    if (level == "DEBUG") {
+        return DEBUG;
+    } else if (level == "INFO") {
+        return INFO;
+    } else if (level == "WARN") {
+        return WARN;
+    } else if (level == "ERROR") {
+        return ERROR;
+    }
+    return DEBUG;
+}
+
 void Logger::worker() {
     while (running || !logQueue.empty()) {
         std::unique_lock<std::mutex> lock(queueMutex);
@@ -50,7 +63,7 @@ void Logger::worker() {
     }
 }
 
-void Logger::init(const std::string &filename, LogLevel level) {
+void Logger::init(const std::string &filename, std::string level) {
     if (running)
         return; // 防止重复初始化
 
@@ -58,7 +71,7 @@ void Logger::init(const std::string &filename, LogLevel level) {
     if (!logFile) {
         throw std::runtime_error("Failed to open log file: " + filename);
     }
-    currentLevel = level;
+    currentLevel = Logger::stringToLevel(level);
     running = true;
     workerThread = std::thread(worker);
 }

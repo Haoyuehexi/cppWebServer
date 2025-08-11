@@ -8,10 +8,11 @@
 #include <unistd.h>
 
 Socket::Socket(int fd) : fd_(fd) {
-    if (fd_ < 0) {
-        throw SocketError(
-            "Invalid file descriptor passed to Socket constructor");
-    }
+    // if (fd_ < 0) {
+    //     throw SocketError(
+    //         "Invalid file descriptor passed to Socket constructor");
+    // }
+    memset(&addr_, 0, sizeof(addr_));
 }
 
 Socket::~Socket() { close(); }
@@ -22,9 +23,66 @@ Socket &Socket::operator=(Socket &&other) noexcept {
     if (this != &other) {
         close();
         fd_ = other.fd_;
+        addr_ = other.addr_;
         other.fd_ = -1;
     }
     return *this;
+}
+
+bool Socket::create() {
+    fd_ = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (fd_ < 0) {
+        throw PosixError("Failed to create socket", errno);
+    }
+    return true;
+}
+
+bool Socket::bind(int port) {
+    ensureValid();
+    addr_.sin_family = AF_INET;
+    addr_.sin_addr.s_addr = htonl(INADDR_ANY);
+    addr_.sin_port = htons(port);
+
+    if (::bind(fd_, reinterpret_cast<struct sockaddr *>(&addr_),
+               sizeof(addr_)) < 0) {
+        throw PosixError("Failed to bind socket", errno);
+    }
+    return true;
+}
+
+bool Socket::listen(int backlog) {
+    ensureValid();
+    if (::listen(fd_, backlog) < 0) {
+        throw PosixError("Failed to listen on socket", errno);
+    }
+    return true;
+}
+
+int Socket::accept() {
+    ensureValid();
+    socklen_t len = sizeof(addr_);
+    int client_fd =
+        ::accept(fd_, reinterpret_cast<struct sockaddr *>(&addr_), &len);
+    if (client_fd < 0) {
+        throw PosixError("Failed to accept connection", errno);
+    }
+    return client_fd;
+}
+
+bool Socket::connect(const std::string &host, int port) {
+    ensureValid();
+    struct sockaddr_in serv_addr{};
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(port);
+
+    if (::inet_pton(AF_INET, host.c_str(), &serv_addr.sin_addr) <= 0) {
+        throw SocketError("Invalid IP address");
+    }
+
+    if (::connect(fd_, reinterpret_cast<sockaddr *>(&serv_addr), sizeof(serv_addr))<0) {
+        throw PosixError("Failed to connect to server", errno);
+    }
+    return true;
 }
 
 std::string Socket::readLine() {

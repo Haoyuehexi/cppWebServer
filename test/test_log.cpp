@@ -2,7 +2,7 @@
 #include <thread>
 
 int main() {
-    Logger::init("./logs/test.log", DEBUG);
+    Logger::init("./logs/test.log", "DEBUG");
 
     std::thread t1([] {
         for (int i = 0; i < 10; i++) {

@@ -12,10 +12,11 @@ TEST_DIR := test
 TEST_CONFIG_SRC := $(TEST_DIR)/test_config.cpp common/config.cpp common/util.cpp
 TEST_LOG_SRC := $(TEST_DIR)/test_log.cpp common/log.cpp
 TEST_UTIL_SRC := $(TEST_DIR)/test_util.cpp common/util.cpp
+TEST_SOCKET_SRC := $(TEST_DIR)/test_socket.cpp net/socket.cpp common/log.cpp
 TEST_CONFIG_BIN := $(TEST_DIR)/test_config
 TEST_LOG_BIN := $(TEST_DIR)/test_log
 TEST_UTIL_BIN := $(TEST_DIR)/test_util
-
+TEST_SOCKET_BIN := $(TEST_DIR)/test_socket
 
 # 输出目标
 TARGET := webserver
@@ -39,14 +40,19 @@ $(TEST_UTIL_BIN): $(TEST_UTIL_SRC)
 $(TEST_LOG_BIN): $(TEST_LOG_SRC)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $^
 
+$(TEST_SOCKET_BIN): $(TEST_SOCKET_SRC)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $^
+
 # 运行全部测试
-test: $(TEST_CONFIG_BIN) $(TEST_UTIL_BIN) $(TEST_LOG_BIN)
+test: $(TEST_CONFIG_BIN) $(TEST_UTIL_BIN) $(TEST_LOG_BIN) $(TEST_SOCKET_BIN)
 	@echo "Running test_config..."
 	./$(TEST_CONFIG_BIN)
 	@echo "Running test_util..."
 	./$(TEST_UTIL_BIN)
 	@echo "Running test_util..."
 	./$(TEST_LOG_BIN)
+	@echo "Running test_socket..."
+	./$(TEST_SOCKET_BIN)
 
 # 单独运行某个测试
 config: $(TEST_CONFIG_BIN)
@@ -58,6 +64,9 @@ util: $(TEST_UTIL_BIN)
 log: $(TEST_LOG_BIN)
 	./$(TEST_LOG_BIN)
 
+socket: $(TEST_SOCKET_BIN)
+	./$(TEST_SOCKET_BIN)
+
 # 清理
 clean:
-	rm -f $(OBJS) $(TARGET) $(TEST_CONFIG_BIN) $(TEST_UTIL_BIN) $(TEST_LOG_BIN)
+	rm -f $(OBJS) $(TARGET) $(TEST_CONFIG_BIN) $(TEST_UTIL_BIN) $(TEST_LOG_BIN) $(TEST_SOCKET_BIN)	

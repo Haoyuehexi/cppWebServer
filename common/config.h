@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include "./log.h"
 
 struct ServerConfig {
     int port;

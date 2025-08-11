@@ -22,12 +22,13 @@ class Logger {
     static LogLevel currentLevel;
 
     static std::string levelToString(LogLevel level);
+    static LogLevel stringToLevel(const std::string &level);
     static void worker();
     static void enqueue(LogLevel level, const std::string &message);
 
   public:
     static void init(const std::string &filename = "server.log",
-                     LogLevel level = INFO);
+                     std::string level = "INFO");
     static void log(LogLevel level, const std::string &message);
     static void debug(const std::string &message);
     static void info(const std::string &message);
