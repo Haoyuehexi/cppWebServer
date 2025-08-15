@@ -1,6 +1,5 @@
 #include "config.h"
 #include "./util.h"
-#include "./log.h"
 #include <algorithm>
 #include <fstream>
 #include <sstream>

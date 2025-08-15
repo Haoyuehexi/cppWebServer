@@ -79,7 +79,8 @@ bool Socket::connect(const std::string &host, int port) {
         throw SocketError("Invalid IP address");
     }
 
-    if (::connect(fd_, reinterpret_cast<sockaddr *>(&serv_addr), sizeof(serv_addr))<0) {
+    if (::connect(fd_, reinterpret_cast<sockaddr *>(&serv_addr),
+                  sizeof(serv_addr)) < 0) {
         throw PosixError("Failed to connect to server", errno);
     }
     return true;
@@ -176,7 +177,7 @@ std::string Socket::getPeerAddress() const {
     struct sockaddr_in addr;
     socklen_t len = sizeof(addr);
 
-    if (getpeername(fd_, (struct sockaddr *)&addr, &len) < 0) {
+    if (getpeername(fd_, reinterpret_cast<sockaddr *>(&addr), &len) < 0) {
         throw PosixError("Failed to get peer address", errno);
     }
 
@@ -188,7 +189,7 @@ int Socket::getPeerPort() const {
     struct sockaddr_in addr;
     socklen_t len = sizeof(addr);
 
-    if (getpeername(fd_, (struct sockaddr *)&addr, &len) < 0) {
+    if (getpeername(fd_, reinterpret_cast<sockaddr *>(&addr), &len) < 0) {
         throw PosixError("Failed to get peer port", errno);
     }
 
