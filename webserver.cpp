@@ -7,7 +7,7 @@ WebServer::WebServer() {
     // root文件夹路径
     char server_path[200];
     getcwd(server_path, 200);
-    char root[20] = "/root";
+    char root[16] = "/resources/html";
     m_root = (char *)malloc(strlen(server_path) + strlen(root) + 1);
     strcpy(m_root, server_path);
     strcat(m_root, root);

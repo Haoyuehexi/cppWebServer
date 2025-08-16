@@ -28,24 +28,6 @@ template <typename T> class block_queue {
         return true;
     }
 
-    // // Pops an item with a timeout.
-    // bool pop(T &item, int ms_timeout) {
-    //     std::unique_lock<std::mutex> lock(m_mutex);
-
-    //     if (!m_cond.wait_for(lock, std::chrono::milliseconds(ms_timeout),
-    //                          [this] { return !m_queue.empty(); })) {
-    //         return false; // Timeout occurred.
-    //     }
-
-    //     if (m_queue.empty()) {
-    //         return false; // Spurious wakeup, but still empty.
-    //     }
-
-    //     item = m_queue.front();
-    //     m_queue.pop();
-    //     return true;
-    // }
-
     // Other methods...
     int size() {
         std::unique_lock<std::mutex> lock(m_mutex);

@@ -9,7 +9,6 @@
 #include <string.h>
 #include <string>
 
-
 connection_pool::connection_pool() {
     m_CurConn = 0;
     m_FreeConn = 0;
@@ -21,9 +20,9 @@ connection_pool *connection_pool::GetInstance() {
 }
 
 // 构造初始化
-void connection_pool::init(std::string url, std::string User, std::string PassWord,
-                           std::string DBName, int Port, int MaxConn,
-                           int close_log) {
+void connection_pool::init(std::string url, std::string User,
+                           std::string PassWord, std::string DBName, int Port,
+                           int MaxConn, int close_log) {
     m_url = url;
     m_Port = Port;
     m_User = User;
