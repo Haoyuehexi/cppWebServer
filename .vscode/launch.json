@@ -1,0 +1,13 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug Webserver",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/webserver",
+            "args": ["127.0.0.1","1234"],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

@@ -1,75 +1,79 @@
-CXX := g++
-CXXFLAGS := -std=c++20 -Wall -g
-INCLUDES := -I./common -I./database -I./http -I./net -I./auth
-LIBS := -L/usr/lib64/mysql -lmysqlclient -lpthread
+# 编译器设置
+CXX = g++
+CXXFLAGS = -std=c++11 -O2 -Wall -g
 
+# 包含目录
+INCLUDES = -I. -I./database -I./http -I./log -I./threadpool -I./timer
 
-# 源码目录和文件
-SRC_DIRS := common database http net auth
-SRCS := $(wildcard $(addsuffix /*.cpp, $(SRC_DIRS))) main.cpp server.cpp
-OBJS := $(SRCS:.cpp=.o)
+# 库文件链接
+LIBS = -lpthread -lmysqlclient -L/usr/lib64/mysql
 
-# 测试源码和目标
-TEST_DIR := test
-TEST_CONFIG_SRC := $(TEST_DIR)/test_config.cpp common/config.cpp common/util.cpp
-TEST_LOG_SRC := $(TEST_DIR)/test_log.cpp common/log.cpp common/util.cpp
-TEST_UTIL_SRC := $(TEST_DIR)/test_util.cpp common/util.cpp
-TEST_SOCKET_SRC := $(TEST_DIR)/test_socket.cpp net/socket.cpp common/log.cpp
+# 目标文件名
+TARGET = webserver
 
-TEST_CONFIG_BIN := $(TEST_DIR)/test_config
-TEST_LOG_BIN := $(TEST_DIR)/test_log
-TEST_UTIL_BIN := $(TEST_DIR)/test_util
-TEST_SOCKET_BIN := $(TEST_DIR)/test_socket
+# 源文件目录
+SRC_DIRS = . ./database ./http ./log ./timer
 
-# 输出目标
-TARGET := webserver
+# 查找所有源文件
+SOURCES = $(foreach dir,$(SRC_DIRS),$(wildcard $(dir)/*.cpp))
 
-.PHONY: all clean test config util log socket run
+# 默认目标
+all: $(TARGET)
 
-# 编译全部
-all: $(TARGET) $(TEST_CONFIG_BIN) $(TEST_UTIL_BIN) $(TEST_LOG_BIN) $(TEST_SOCKET_BIN)
-
-# 主程序
-$(TARGET): $(OBJS)
+# 直接从源文件生成可执行文件
+$(TARGET): $(SOURCES)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $^ $(LIBS)
+	@echo "Build complete: $(TARGET)"
 
-# 测试程序
-$(TEST_CONFIG_BIN): $(TEST_CONFIG_SRC)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $^ $(LIBS)
-
-$(TEST_LOG_BIN): $(TEST_LOG_SRC)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $^ $(LIBS)
-
-$(TEST_UTIL_BIN): $(TEST_UTIL_SRC)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $^ $(LIBS)
-
-$(TEST_SOCKET_BIN): $(TEST_SOCKET_SRC)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -o $@ $^ $(LIBS)
-
-# 运行所有测试
-test: $(TEST_CONFIG_BIN) $(TEST_UTIL_BIN) $(TEST_LOG_BIN) $(TEST_SOCKET_BIN)
-	@echo "Running test_config..."
-	./$(TEST_CONFIG_BIN)
-	@echo "Running test_util..."
-	./$(TEST_UTIL_BIN)
-	@echo "Running test_log..."
-	./$(TEST_LOG_BIN)
-	@echo "Running test_socket..."
-	./$(TEST_SOCKET_BIN)
-
-# 单独运行测试
-config: $(TEST_CONFIG_BIN)
-	./$(TEST_CONFIG_BIN)
-
-util: $(TEST_UTIL_BIN)
-	./$(TEST_UTIL_BIN)
-
-log: $(TEST_LOG_BIN)
-	./$(TEST_LOG_BIN)
-
-socket: $(TEST_SOCKET_BIN)
-	./$(TEST_SOCKET_BIN)
-
-# 清理
+# 清理编译生成的文件
 clean:
-	rm -f $(OBJS) $(TARGET) $(TEST_CONFIG_BIN) $(TEST_UTIL_BIN) $(TEST_LOG_BIN) $(TEST_SOCKET_BIN)
+	rm -f $(TARGET)
+	@echo "Clean complete"
+
+# 清理并重新编译
+rebuild: clean all
+
+# 运行程序
+run: $(TARGET)
+	./$(TARGET)
+
+# 调试编译
+debug: CXXFLAGS += -DDEBUG -g3
+debug: $(TARGET)
+
+# 发布编译
+release: CXXFLAGS += -DNDEBUG -O3
+release: clean $(TARGET)
+
+# 检查代码风格（需要安装cpplint）
+lint:
+	@if command -v cpplint >/dev/null 2>&1; then \
+		find . -name "*.cpp" -o -name "*.h" | xargs cpplint; \
+	else \
+		echo "cpplint not found. Please install it first."; \
+	fi
+
+# 格式化代码（需要安装clang-format）
+format:
+	@if command -v clang-format >/dev/null 2>&1; then \
+		find . -name "*.cpp" -o -name "*.h" | xargs clang-format -i; \
+		echo "Code formatted"; \
+	else \
+		echo "clang-format not found. Please install it first."; \
+	fi
+
+# 显示帮助信息
+help:
+	@echo "Available targets:"
+	@echo "  all       - Build the project (default)"
+	@echo "  clean     - Remove all build files"
+	@echo "  rebuild   - Clean and build"
+	@echo "  run       - Build and run the program"
+	@echo "  debug     - Build with debug flags"
+	@echo "  release   - Build optimized release version"
+	@echo "  lint      - Check code style"
+	@echo "  format    - Format source code"
+	@echo "  help      - Show this help message"
+
+# 声明伪目标
+.PHONY: all clean rebuild install uninstall run debug release lint format help

@@ -1,0 +1,128 @@
+#ifndef THREADPOOL_H
+#define THREADPOOL_H
+
+#include "../database/sql_connection_pool.h"
+#include <cstdio>
+#include <exception>
+#include <list>
+#include <mutex>
+#include <thread>
+
+template <typename T> class threadpool {
+  public:
+    /*thread_number是线程池中线程的数量，max_requests是请求队列中最多允许的、等待处理的请求的数量*/
+    threadpool(int actor_model, connection_pool *connPool,
+               int thread_number = 8, int max_request = 10000);
+    ~threadpool();
+    bool append(T *request, int state);
+    bool append_p(T *request);
+
+  private:
+    /*工作线程运行的函数，它不断从工作队列中取出任务并执行之*/
+    static void *worker(void *arg);
+    void run();
+
+  private:
+    int m_thread_number;        // 线程池中的线程数
+    int m_max_requests;         // 请求队列中允许的最大请求数
+    std::thread *m_threads;     // 描述线程池的数组，其大小为m_thread_number
+    std::list<T *> m_workqueue; // 请求队列
+    std::mutex m_queuelocker;   // 保护请求队列的互斥锁
+    std::condition_variable m_queuestat; // 是否有任务需要处理
+    connection_pool *m_connPool;         // 数据库
+    int m_actor_model;                   // 模型切换
+    bool m_stop;                         // 是否停止线程池
+};
+
+template <typename T>
+threadpool<T>::threadpool(int actor_model, connection_pool *connPool,
+                          int thread_number, int max_requests)
+    : m_actor_model(actor_model), m_thread_number(thread_number),
+      m_max_requests(max_requests), m_threads(nullptr), m_connPool(connPool),
+      m_stop(false) {
+    if (thread_number <= 0 || max_requests <= 0)
+        throw std::exception();
+    m_threads = new std::thread[m_thread_number];
+    if (!m_threads)
+        throw std::exception();
+    for (int i = 0; i < thread_number; ++i) {
+        m_threads[i] = std::thread(worker, this);
+    }
+}
+
+template <typename T> threadpool<T>::~threadpool() {
+    m_stop = true;
+    m_queuestat.notify_all();
+    for (int i = 0; i < m_thread_number; ++i) {
+        if (m_threads[i].joinable()) {
+            m_threads[i].join();
+        }
+    }
+    delete[] m_threads;
+}
+
+template <typename T> bool threadpool<T>::append(T *request, int state) {
+    std::unique_lock<std::mutex> lock(m_queuelocker);
+    if (m_workqueue.size() >= m_max_requests) {
+        return false;
+    }
+    request->m_state = state;
+    m_workqueue.push_back(request);
+    m_queuestat.notify_one();
+    return true;
+}
+
+template <typename T> bool threadpool<T>::append_p(T *request) {
+    std::unique_lock<std::mutex> lock(m_queuelocker);
+    if (m_workqueue.size() >= m_max_requests) {
+        return false;
+    }
+    m_workqueue.push_back(request);
+    m_queuestat.notify_one();
+    return true;
+}
+
+template <typename T> void *threadpool<T>::worker(void *arg) {
+    threadpool *pool = (threadpool *)arg;
+    pool->run();
+    return pool;
+}
+
+template <typename T> void threadpool<T>::run() {
+    while (true) {
+        std::unique_lock<std::mutex> lock(m_queuelocker);
+        m_queuestat.wait(lock,
+                         [this]() { return !m_workqueue.empty() || m_stop; });
+        if (m_stop && m_workqueue.empty()) {
+            break;
+        }
+        T *request = m_workqueue.front();
+        m_workqueue.pop_front();
+        if (!request) {
+            continue;
+        }
+        if (m_actor_model == 1) {
+            if (request->m_state == 0) {
+                if (request->read_once()) {
+                    request->improv = 1;
+                    connectionRAII mysqlcon(&request->mysql, m_connPool);
+                    request->process();
+                } else {
+                    request->improv = 1;
+                    request->timer_flag = 1;
+                }
+            } else {
+                if (request->write()) {
+                    request->improv = 1;
+                } else {
+                    request->improv = 1;
+                    request->timer_flag = 1;
+                }
+            }
+        } else {
+            connectionRAII mysqlcon(&request->mysql, m_connPool);
+            request->process();
+        }
+    }
+}
+#endif
